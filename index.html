@@ -849,7 +849,7 @@ textarea{min-height:110px;resize:vertical;font-family:var(--hand);font-size:24px
   <button class="stap prev" id="storyPrev" aria-label="Previous"></button>
   <button class="stap next" id="storyNext" aria-label="Next"></button>
 </div>
-<audio id="song" preload="auto"></audio>
+<audio id="song" preload="auto" playsinline webkit-playsinline></audio>
 <div class="npchip" id="npChip" hidden></div>
 <button class="music" id="musicBtn" hidden aria-label="Open the record player"><span class="minirec" id="miniRec"></span></button>
 <div id="deck" hidden>
@@ -2249,7 +2249,12 @@ function dogRace(){
 // photos, songs and memories load from the private database after signing in.
 const sb = C.online && window.supabase ? window.supabase.createClient(C.online.url, C.online.key) : null;
 let synced = new Map(), syncTimer = null, syncing = false, ignoreUntil = 0, myId = null, URL2PATH = {}, reloadTimer = null, live = null;
-const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=';
+// half a second of real silence: Safari and iPhones only let the song start later if this element
+// actually played something during the tap (an empty clip fails, so it never counted)
+const SILENT = (() => {
+  const n = 4000, u32 = v => String.fromCharCode(v & 255, v >> 8 & 255, v >> 16 & 255, v >>> 24), u16 = v => String.fromCharCode(v & 255, v >> 8 & 255);
+  return 'data:audio/wav;base64,' + btoa('RIFF' + u32(36 + n) + 'WAVEfmt ' + u32(16) + u16(1) + u16(1) + u32(8000) + u32(8000) + u16(1) + u16(8) + 'data' + u32(n) + '\x80'.repeat(n));
+})();
 
 function primeAudio(){ try { if (!song.getAttribute('src')){ song.src = SILENT; const p = song.play(); if (p) p.then(() => song.pause()).catch(() => {}); } } catch(e){} }
 async function onlineUnlock(){
