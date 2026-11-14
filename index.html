@@ -597,6 +597,23 @@ body.gold22 .land-s{color:#f3d67c}
 /* letters */
 .lintro{text-align:center;color:var(--muted);font-style:italic;max-width:480px;margin:0 auto 14px}
 .lwrite{display:block;margin:0 auto 26px}
+/* bucket list: a notepad of things we still want to do */
+.wishsec{max-width:580px;margin-left:auto;margin-right:auto}
+.wishpad{background:var(--paper);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:4px 16px}
+.wish{display:flex;align-items:flex-start;gap:12px;padding:12px 0;border-bottom:1px dashed var(--line)}
+.wish:last-child{border-bottom:0}
+.wtick{flex:none;width:36px;height:36px;border-radius:50%;border:2px solid var(--accent);background:transparent;color:#fff;font-size:18px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0;transition:background .2s,transform .2s}
+.wtick:disabled{cursor:default;opacity:.7}
+.wtick:not(:disabled):hover{transform:scale(1.08)}
+.wish.done .wtick{background:var(--accent)}
+.wbody{flex:1;min-width:0;background:none;border:0;text-align:left;padding:0;color:inherit;font:inherit;cursor:pointer}
+.wbody:disabled{cursor:default}
+.wtitle{display:block;font-family:var(--hand);font-size:27px;font-weight:700;line-height:1.1;overflow-wrap:anywhere}
+.wish.done .wtitle{text-decoration:line-through;text-decoration-thickness:2px;color:var(--muted)}
+.wnote{display:block;font-style:italic;color:var(--muted);overflow-wrap:anywhere}
+.wmeta{display:block;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:4px}
+.wmem{margin-top:8px;font-size:14px;padding:4px 12px}
+.pin .dot.wishdot{background:var(--paper);color:var(--accent);border:2px dashed var(--accent);font-size:17px}
 .letters{display:flex;flex-wrap:wrap;gap:24px;justify-content:center}
 .envcard{position:relative;width:250px;aspect-ratio:1.6;border:0;border-radius:6px;background:#e9c8b6;color:#4a2f2a;box-shadow:var(--shadow);overflow:hidden;cursor:pointer;
   display:flex;flex-direction:column;justify-content:flex-end;align-items:center;padding:0 14px 14px;transform:rotate(var(--r,0deg));transition:transform .25s}
@@ -826,6 +843,7 @@ textarea{min-height:110px;resize:vertical;font-family:var(--hand);font-size:24px
     <button class="chip" data-f="date" aria-pressed="false">Dates</button>
     <button class="chip" data-f="keepsake" aria-pressed="false">Keepsakes</button>
     <button class="chip" data-f="letter" aria-pressed="false">&#9993; Letters</button>
+    <button class="chip" data-f="wish" aria-pressed="false">&#9734; Bucket list</button>
     <button class="chip favchip" data-f="fav" aria-pressed="false"><span class="ficons" id="favChipIcons"></span>Favourites</button>
   </div>
   <p class="edithint" id="editMsg" hidden>Edit mode. Changes are kept once you press Save, which downloads a new version.</p>
@@ -1262,7 +1280,7 @@ function items(){
                lat:has('lat') ? e.lat : p.lat, lng:has('lng') ? e.lng : p.lng,
                img:e.image || IMG[p.id], note:has('text') ? e.text : p.text };
     }).filter(Boolean),
-    ...MEM.filter(m => m.type !== 'letter').map(m => ({ ...m, keepKind:m.kind, kind:m.type, key:'m:' + m.id, iso:m.date || '', isoEnd:m.date && m.dateEnd > m.date ? m.dateEnd : '', dateText:fmtRange(m.date, m.dateEnd), dkind:m.type === 'date' ? (DKIND[m.dkind] ? m.dkind : 'date') : undefined, linked:m.type === 'date' && Array.isArray(m.photos) ? m.photos : [],
+    ...MEM.filter(m => m.type !== 'letter' && m.type !== 'wish').map(m => ({ ...m, keepKind:m.kind, kind:m.type, key:'m:' + m.id, iso:m.date || '', isoEnd:m.date && m.dateEnd > m.date ? m.dateEnd : '', dateText:fmtRange(m.date, m.dateEnd), dkind:m.type === 'date' ? (DKIND[m.dkind] ? m.dkind : 'date') : undefined, linked:m.type === 'date' && Array.isArray(m.photos) ? m.photos : [],
                        img:m.image || '', note:m.type === 'photo' ? m.text : undefined })),
     ...TRACKS.map((t, i) => {
       const e = EDITS['song:' + t.id] || {};
@@ -1290,6 +1308,7 @@ function reveal(node, delay){
 function renderBox(){
   const root = $('#boxView'); root.innerHTML = '';
   if (filter === 'letter'){ renderLetters(root); return; }
+  if (filter === 'wish'){ renderWishes(root); return; }
   const hay = it => [it.title, it.place, it.text, it.note, it.artist, it.dateText, it.from, it.keepKind && KIND[it.keepKind], it.kind, it.dkind && DKIND[it.dkind][0]].filter(Boolean).join(' ').toLowerCase();
   if (filter === 'date'){
     const ds = items().filter(it => it.kind === 'date'), row = el('div', 'chips subchips'); row.setAttribute('role', 'group'); row.setAttribute('aria-label', 'Kind of date');
@@ -1818,6 +1837,120 @@ async function readLetter(id){
   paper.append(row); ov.append(paper);
   await sleep(30); paper.classList.add('show'); envelopeDone(env);
   if (!m.openedAt){ m.openedAt = new Date().toISOString(); changed(null); }
+}
+
+/* ---------- bucket list ---------- */
+// Wishes live with the other memories as type 'wish', but stay out of the timeline, the stats and the journey.
+const WKIND = { place:['Place to go', '✈'], food:['Food to try', '🍝'], todo:['Thing to do', '★'] };
+function wishes(){ return MEM.filter(m => m.type === 'wish'); }
+function renderWishes(root){
+  const all = wishes().filter(m => !query || [m.title, m.text, m.place, m.from].filter(Boolean).join(' ').toLowerCase().includes(query));
+  root.append(el('p', 'lintro', 'Places we want to go and things we want to do. Tick one off once we’ve done it.'));
+  if (editing){ const w = el('button', 'btn primary lwrite', '＋ Add to the list'); w.type = 'button'; w.onclick = () => openWish(); root.append(w); }
+  if (!all.length){ root.append(el('p', 'empty', query ? 'Nothing on the list matches “' + query + '”.' : 'Nothing on the list yet.' + (editing ? ' Add the first thing.' : ''))); root.lastChild.style.textAlign = 'center'; return; }
+  [[false, 'Still to do'], [true, 'Done']].forEach(([done, name]) => {
+    const arr = all.filter(m => !!m.doneAt === done).sort((a, b) => done ? (String(b.doneAt) < String(a.doneAt) ? -1 : 1) : (String(a.created) < String(b.created) ? -1 : 1));
+    if (!arr.length) return;
+    const sec = el('section', 'month wishsec'), h = el('h2', null, name), pad = el('div', 'wishpad');
+    h.append(el('small', null, String(arr.length)));
+    arr.forEach(m => pad.append(wishRow(m)));
+    sec.append(h, pad); root.append(sec);
+  });
+}
+function wishRow(m){
+  const k = WKIND[m.wkind] || WKIND.todo, row = el('div', 'wish' + (m.doneAt ? ' done' : ''));
+  const tick = el('button', 'wtick', m.doneAt ? '✓' : ''); tick.type = 'button'; tick.disabled = !editing;
+  tick.setAttribute('aria-label', (m.doneAt ? 'Not done after all: ' : 'Tick off: ') + m.title);
+  tick.onclick = () => {
+    const w = MEM.find(x => x.id === m.id); if (!w) return;
+    if (w.doneAt) delete w.doneAt; else w.doneAt = todayISO();
+    changed(w.doneAt ? 'Ticked off ♥' : 'Back on the list');
+  };
+  const col = el('div'); col.style.cssText = 'flex:1;min-width:0';
+  const body = el('button', 'wbody'); body.type = 'button'; body.disabled = !editing;
+  body.append(el('span', 'wtitle', m.title || ''));
+  if (m.text) body.append(el('span', 'wnote', m.text));
+  body.append(el('span', 'wmeta', [k[1] + ' ' + k[0], m.place, m.from && 'added by ' + m.from, m.doneAt && 'done ' + fmtDate(m.doneAt)].filter(Boolean).join(' · ')));
+  body.onclick = () => openWish({ ...m });
+  col.append(body);
+  if (m.doneAt){
+    const has = m.memId && MEM.some(x => x.id === m.memId);
+    if (has || editing){
+      const b = el('button', 'btn wmem', has ? 'See the memory' : '＋ Make it a memory'); b.type = 'button';
+      b.onclick = () => has ? open('m:' + m.memId) : openForm({ type:'date', title:m.title, text:m.text || '', place:m.place || '', lat:m.lat, lng:m.lng, date:m.doneAt, _wish:m.id });
+      col.append(b);
+    }
+  }
+  row.append(tick, col);
+  return row;
+}
+function openWish(d){
+  let me = 'Adrian'; try { me = localStorage.getItem('box-me') || me; } catch(e){}
+  const draft = Object.assign({ type:'wish', wkind:'place', title:'', text:'', place:'', lat:null, lng:null, from:me }, d || {});
+  openSheet(c => {
+    c.append(el('h3', null, draft.id ? 'Edit this wish' : 'Add to the bucket list'));
+    const f = el('form'); f.noValidate = true; c.append(f);
+    const group = (text, node) => { const l = el('div', 'flabel', text); l.append(node); f.append(l); return node; };
+    const field = (text, node) => { const l = el('label', null, text); l.append(node); f.append(l); return node; };
+    const chips = (opts, get, set) => {
+      const r = el('div', 'chips dkinds');
+      opts.forEach(([v, t]) => { const b = el('button', 'chip', t); b.type = 'button'; b.setAttribute('aria-pressed', String(get() === v));
+        b.onclick = () => { set(v); r.querySelectorAll('.chip').forEach(x => x.setAttribute('aria-pressed', String(x === b))); }; r.append(b); });
+      return r;
+    };
+    group('What kind?', chips(Object.entries(WKIND).map(([v, [n, i]]) => [v, i + ' ' + n]), () => draft.wkind, v => draft.wkind = v));
+    const title = el('input'); title.id = 'wTitle'; title.type = 'text'; title.value = draft.title; title.placeholder = 'See the northern lights…'; title.maxLength = 120;
+    field('What is it?', title);
+    const text = el('textarea'); text.id = 'wText'; text.rows = 2; text.value = draft.text || '';
+    field('Anything to add (optional)', text);
+    const place = el('input'); place.id = 'wPlace'; place.type = 'text'; place.value = draft.place || ''; place.placeholder = 'Paris';
+    field('Where (optional)', place);
+    const where = el('select'); where.id = 'wWhere'; field('On the map', where);
+    const opt = (v, t) => { const o = el('option', null, t); o.value = v; where.append(o); return o; };
+    const known = knownPlaces();
+    opt('', 'Not on the map');
+    let matched = false;
+    for (const [name, [la, ln]] of known){
+      const o = opt('k:' + name, name);
+      if (!matched && draft.lat != null && la === draft.lat && ln === draft.lng){ o.selected = true; matched = true; }
+    }
+    if (draft.lat != null && !matched) opt('keep', (draft.place || 'Pinned spot') + ' (pinned on the map)').selected = true;
+    opt('pick', draft.lat != null ? 'Pick a different spot on the map…' : 'Pick a spot on the map…');
+    const sync = () => {
+      draft.title = title.value.trim(); draft.text = text.value.trim(); draft.place = place.value.trim();
+      if (where.value === '') draft.lat = draft.lng = null;
+      else if (where.value.startsWith('k:')) [draft.lat, draft.lng] = known.get(where.value.slice(2));
+    };
+    where.onchange = () => {
+      if (where.value === 'pick'){ sync(); startPick(draft); }
+      else if (where.value.startsWith('k:') && !place.value.trim()) place.value = where.value.slice(2);
+    };
+    group('Whose idea?', chips([['Adrian', 'Adrian'], ['Lana', 'Lana'], ['Both', 'Both of us']], () => draft.from, v => draft.from = v));
+    const err = el('p', 'hint'); f.append(err);
+    const row = el('div', 'row');
+    const save = el('button', 'btn primary', draft.id ? 'Done' : 'Add it'); save.type = 'submit';
+    const cancel = el('button', 'btn', 'Cancel'); cancel.type = 'button'; cancel.onclick = close;
+    row.append(save, cancel);
+    if (draft.id){
+      const del = el('button', 'btn danger', 'Delete'); del.type = 'button';
+      del.onclick = () => { if (confirm('Take this off the list for good?')){ MEM = MEM.filter(x => x.id !== draft.id); changed('Off the list'); close(); } };
+      row.append(del);
+    }
+    f.append(row);
+    f.onsubmit = e => {
+      e.preventDefault(); sync();
+      if (!draft.title){ err.textContent = 'Say what it is first.'; title.focus(); return; }
+      if (draft.from !== 'Both'){ try { localStorage.setItem('box-me', draft.from); } catch(e){} }
+      const m = { id:draft.id || Date.now().toString(36), created:draft.created || new Date().toISOString(), type:'wish', wkind:draft.wkind,
+                  title:draft.title, text:draft.text, place:draft.place, lat:draft.lat, lng:draft.lng, from:draft.from };
+      if (draft.doneAt) m.doneAt = draft.doneAt;
+      if (draft.memId) m.memId = draft.memId;
+      const i = MEM.findIndex(x => x.id === m.id);
+      if (i >= 0) MEM[i] = m; else MEM.push(m);
+      changed(i >= 0 ? 'Updated' : 'On the list ☆');
+      close();
+    };
+  });
 }
 
 /* ---------- on this day ---------- */
@@ -2381,6 +2514,7 @@ function shrink(file){
   });
 }
 function openForm(d){
+  if (d && d.type === 'wish') return openWish(d);
   const draft = Object.assign({ type:'note', color:'yellow', kind:'song', dkind:'date', dateEnd:'', title:'', text:'', date:'', place:'', link:'', image:'', lat:null, lng:null, from:'Adrian' }, d || {});
   openSheet(c => {
     c.append(el('h3', null, draft.id ? 'Edit memory' : 'Add a memory'));
@@ -2612,6 +2746,7 @@ function openForm(d){
       const i = MEM.findIndex(x => x.id === m.id);
       if (i >= 0) MEM[i] = m; else MEM.push(m);
       if (draft.type === 'photo' && draft._dates) applyPhotoDates('m:' + m.id, draft._dates);
+      if (draft._wish){ const w = MEM.find(x => x.id === draft._wish); if (w) w.memId = m.id; }
       changed(i >= 0 ? 'Updated' : 'In the box');
       close();
     };
@@ -2642,7 +2777,7 @@ $('#saveBtn').onclick = () => {
   toast('Saved to your Downloads');
 };
 addEventListener('beforeunload', e => { if (dirty){ e.preventDefault(); e.returnValue = ''; } });
-$('#addBtn').onclick = () => openForm(filter === 'letter' ? { type:'letter' } : filter === 'date' ? { type:'date' } : filter === 'photo' || filter === 'keepsake' ? { type:filter } : undefined);
+$('#addBtn').onclick = () => openForm(filter === 'wish' ? { type:'wish' } : filter === 'letter' ? { type:'letter' } : filter === 'date' ? { type:'date' } : filter === 'photo' || filter === 'keepsake' ? { type:filter } : undefined);
 
 /* ---------- views ---------- */
 function setView(v, instant){
@@ -2678,7 +2813,7 @@ function sizeMap(){ const top = $('.bar').getBoundingClientRect().bottom; $('#ma
 addEventListener('resize', () => { if (view === 'map'){ sizeMap(); map && map.invalidateSize(); } });
 
 /* ---------- map ---------- */
-let map = null, pins = [], tripLines = [];
+let map = null, pins = [], tripLines = [], wishPins = [];
 const small = () => innerWidth < 600;
 const pinW = () => small() ? 78 : 100;
 function initMap(){
@@ -2711,7 +2846,7 @@ let picked = null, pickMarker = null;
 async function startPick(d){
   picking = d; close(); await setView('map');
   if (!map){ picking = null; toast('The map needs an internet connection.'); openForm(d); return; }
-  $('#pickMsg').textContent = 'Tap where it happened';
+  $('#pickMsg').textContent = d.type === 'wish' ? 'Tap where it is' : 'Tap where it happened';
   $('#pickName').value = d.place || ''; $('#pickName').hidden = true; $('#pickOk').hidden = true;
   $('#pickBanner').hidden = false; $('#map').style.cursor = 'crosshair';
 }
@@ -2731,7 +2866,7 @@ $('#pickOk').onclick = usePick;
 $('#pickName').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault(); usePick(); } });
 $('#pickCancel').onclick = () => { const d = picking; endPick(); setView('box'); openForm(d); };
 function fitPad(){ const pad = Math.min(90, innerWidth * .14), h = pinW() * .7; return { paddingTopLeft:[pad, h + 20], paddingBottomRight:[pad, h + 30] }; }
-function clearPins(){ pins.forEach(o => map.removeLayer(o.m)); pins = []; tripLines.forEach(l => map.removeLayer(l)); tripLines = []; }
+function clearPins(){ pins.forEach(o => map.removeLayer(o.m)); pins = []; tripLines.forEach(l => map.removeLayer(l)); tripLines = []; wishPins.forEach(l => map.removeLayer(l)); wishPins = []; }
 function renderPins(fit){
   const w = pinW();
   items().filter(it => typeof it.lat === 'number' && typeof it.lng === 'number').forEach(it => {
@@ -2772,6 +2907,14 @@ function renderPins(fit){
     const line = L.polyline(pts, { color:'#4a83a6', weight:4, opacity:.85, dashArray:'1 10', lineCap:'round' }).addTo(map);
     line.bindTooltip('✈ ' + (tr.title || 'Trip'), { sticky:true }); line.on('click', () => { if (!picking) open(tr.key); });
     tripLines.push(line);
+  });
+  // bucket list: the places we still want to go show as dashed star pins
+  wishes().filter(m => !m.doneAt && typeof m.lat === 'number' && typeof m.lng === 'number').forEach(m => {
+    const sz = Math.round(w * .42);
+    const mk = L.marker([m.lat, m.lng], { icon:L.divIcon({ className:'pin', html:'<div class="dot wishdot">☆</div>', iconSize:[sz, sz], iconAnchor:[sz / 2, sz + 6] }), zIndexOffset:5000 }).addTo(map);
+    mk.bindTooltip(el('span', null, '☆ ' + (m.title || 'On our list') + ' · on our bucket list'), { direction:'top', offset:[0, -sz - 6] });
+    mk.on('click', () => { if (picking) return; if (editing) openWish({ ...m }); });
+    wishPins.push(mk);
   });
   pins.forEach(o => o.wrap.style.transition = 'none');
   layoutPins();
